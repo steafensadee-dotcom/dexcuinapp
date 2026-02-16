@@ -32,28 +32,20 @@
         .proof-ui { width: 100%; margin-top: 15px; padding-top: 15px; border-top: 1px solid #222; display: none; }
         .instruction-box { background: #1a1a1a; padding: 12px; border-radius: 10px; border-left: 4px solid #ffcc00; margin-bottom: 15px; font-size: 13px; color: #ddd; line-height: 1.4; }
         .instruction-box b { color: #ffcc00; display: block; margin-bottom: 5px; }
-        
-        /* Input එක සකස් කළ ආකාරය */
         .proof-input { width: 100%; padding: 15px; background: #000; border: 1px solid #444; color: #fff; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; font-size: 15px; outline: none; }
         .proof-input:focus { border-color: #ffcc00; }
-
         .submit-btn { background: #ffcc00; color: #000; border: none; padding: 10px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; }
 
-        #video-overlay { 
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.9); z-index: 2000; flex-direction: column; align-items: center; justify-content: center;
-            text-align: center; padding: 20px;
-        }
-        .timer-box { background: #111; padding: 30px; border-radius: 25px; border: 2px solid #ffcc00; box-shadow: 0 0 20px rgba(255,204,0,0.2); }
-        #timer-display { font-size: 40px; font-weight: bold; color: #ffcc00; margin-bottom: 10px; }
-        .timer-msg { color: #888; font-size: 14px; margin-bottom: 20px; }
-        #claim-btn { display: none; background: #4cd137; color: #000; border: none; padding: 15px 30px; border-radius: 12px; font-weight: bold; font-size: 16px; cursor: pointer; }
+        #video-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
+        .timer-box { background: #111; padding: 30px; border-radius: 25px; border: 2px solid #ffcc00; }
+        #timer-display { font-size: 40px; font-weight: bold; color: #ffcc00; }
+        #claim-btn { display: none; background: #4cd137; color: #000; border: none; padding: 15px 30px; border-radius: 12px; font-weight: bold; cursor: pointer; }
 
-        .withdraw-input { width: 100%; padding: 15px; background: #111; border: 1px solid #333; color: #fff; border-radius: 10px; margin-bottom: 15px; box-sizing: border-box; font-size: 14px; }
-        .withdraw-btn { width: 100%; background: #ffcc00; color: #000; border: none; padding: 18px; border-radius: 15px; font-weight: 800; font-size: 16px; cursor: pointer; }
+        .withdraw-input { width: 100%; padding: 15px; background: #111; border: 1px solid #333; color: #fff; border-radius: 10px; margin-bottom: 15px; box-sizing: border-box; }
+        .withdraw-btn { width: 100%; background: #ffcc00; color: #000; border: none; padding: 18px; border-radius: 15px; font-weight: 800; }
         
-        .nav { position: fixed; bottom: 0; width: 100%; background: #111; display: flex; padding: 15px 0; border-top: 1px solid #222; z-index: 1000; }
-        .nav-link { flex: 1; text-align: center; font-size: 22px; color: #444; cursor: pointer; }
+        .nav { position: fixed; bottom: 0; width: 100%; background: #111; display: flex; padding: 15px 0; border-top: 1px solid #222; }
+        .nav-link { flex: 1; text-align: center; font-size: 22px; color: #444; }
         .nav-link.active { color: #ffcc00; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
@@ -63,7 +55,7 @@
     <div id="video-overlay">
         <div class="timer-box">
             <div id="timer-display">0s</div>
-            <p class="timer-msg">Watching video...<br>Don't close!</p>
+            <p style="color:#888;">Watching video...</p>
             <button id="claim-btn" onclick="collectVideoReward()">Claim Reward 🎁</button>
         </div>
     </div>
@@ -89,14 +81,14 @@
 
     <div id="screen-wallet" class="screen">
         <div class="top-bar"><div class="bal-label">Wallet</div><div class="bal-value"><span class="balance-text">0</span> DEX</div></div>
-        <div class="wallet-container" style="padding:20px;">
+        <div style="padding:20px;">
             <select id="method" class="withdraw-input">
                 <option value="Binance ID">Binance ID</option>
-                <option value="Bank Transfer">Bank Transfer (Sri Lanka Only)</option>
-                <option value="Binance Wallet Address">Binance Wallet</option>
+                <option value="Bank Transfer">Bank Transfer (SL Only)</option>
+                <option value="Binance Wallet">Binance Wallet</option>
             </select>
-            <input type="number" id="amount" placeholder="Amount (Minimum 1000)" class="withdraw-input">
-            <textarea id="details" placeholder="Enter ID, Bank details or Address here..." class="withdraw-input" style="height: 100px;"></textarea>
+            <input type="number" id="amount" placeholder="Amount (Min 1000)" class="withdraw-input">
+            <textarea id="details" placeholder="Payment details here..." class="withdraw-input" style="height: 100px;"></textarea>
             <button class="withdraw-btn" onclick="submitWithdraw()">Withdraw Now</button>
         </div>
     </div>
@@ -119,12 +111,10 @@
         const db = firebase.firestore();
 
         let tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        let user = tg.initDataUnsafe.user || { id: "Guest_User", first_name: "Guest" };
+        tg.ready(); tg.expand();
+        let user = tg.initDataUnsafe.user || { id: "Guest", first_name: "User" };
         
-        let balance = 0, completedTasks = [], pendingTasks = [];
-        let isProcessing = false;
+        let balance = 0, completedTasks = [], pendingTasks = [], isProcessing = false;
         let activeTaskId = null, activeReward = 0;
 
         function loadUserData() {
@@ -136,187 +126,110 @@
                     db.collection("users").doc(user.id.toString()).set({ name: user.first_name, balance: 0, completedTasks: [] });
                 }
                 updateUI();
-                updateTaskButtons(); // මුළු ලිස්ට් එකම රෙන්ඩර් නොකර බොත්තම් පමණක් අප්ඩේට් කරයි
+                updateTaskButtons(); 
             });
         }
 
-        // ටාස්ක් ලිස්ට් එක මුලින්ම එක් වරක් රෙන්ඩර් කරයි
         function initialTaskLoad() {
             db.collection("tasks").orderBy("createdAt", "desc").get().then(snap => {
                 const groups = { videos: "", ads: "", surveys: "", minitasks: "" };
                 const icons = { videos: "▶️", ads: "🔗", surveys: "📄", minitasks: "🛠️" };
-
                 snap.forEach(doc => {
-                    const t = doc.data();
-                    const id = doc.id;
-                    const html = `<div class="task-card" id="card-${id}">
+                    const t = doc.data(); const id = doc.id;
+                    const html = `<div class="task-card">
                         <div class="icon-box">${icons[t.category] || '✨'}</div>
-                        <div class="details">
-                            <h4>${t.title}</h4>
-                            <p class="reward">+${t.reward} DEX</p>
-                            ${(t.category === 'surveys' && t.instructions) ? `<div class="task-meta">${t.instructions}</div>` : ''}
-                        </div>
-                        <button id="btn-${id}" class="go-btn" onclick="handleTaskBtnClick('${id}', '${t.category}', '${t.link}', ${t.reward}, ${t.timer || 15})">Go</button>
-                        ${(t.category === 'minitasks') ? `
-                        <div id="mini-ui-${id}" class="proof-ui">
-                            <div class="instruction-box"><b>📝 Instructions:</b> ${t.instructions || "Complete task and submit link."}</div>
+                        <div class="details"><h4>${t.title}</h4><p class="reward">+${t.reward} DEX</p></div>
+                        <button id="btn-${id}" class="go-btn" onclick="handleBtnClick('${id}','${t.category}','${t.link}',${t.reward},${t.timer||15})">Go</button>
+                        ${(t.category === 'minitasks') ? `<div id="mini-ui-${id}" class="proof-ui">
+                            <div class="instruction-box"><b>📝 Instructions:</b> ${t.instructions || "Complete & submit link."}</div>
                             <button class="go-btn" style="width:100%; margin-bottom:8px; background:#005cbf;" onclick="tg.openLink('https://fex.net/')">1. Upload Screenshot</button>
                             <button class="go-btn" style="width:100%; margin-bottom:10px;" onclick="tg.openLink('${t.link}')">2. Complete Task</button>
-                            <input type="text" id="link-${id}" placeholder="Paste proof link here..." class="proof-input">
+                            <input type="text" id="link-${id}" placeholder="Paste link here..." class="proof-input">
                             <button class="submit-btn" onclick="submitMiniProof('${id}')">Submit Link</button>
                         </div>` : ''}
                     </div>`;
                     if (groups[t.category] !== undefined) groups[t.category] += html;
                 });
-
-                Object.keys(groups).forEach(g => {
-                    document.getElementById('group-' + g).innerHTML = groups[g] || "No tasks available.";
-                });
-                loadUserData();
-                setupPendingListener();
+                Object.keys(groups).forEach(g => document.getElementById('group-' + g).innerHTML = groups[g] || "No tasks.");
+                loadUserData(); setupPendingListener();
             });
         }
         initialTaskLoad();
 
         function setupPendingListener() {
-            db.collection("taskRequests").where("userId", "==", user.id).onSnapshot(reqSnap => {
-                let p = [];
-                reqSnap.forEach(rdoc => { if(rdoc.data().status === "pending") p.push(rdoc.data().taskId); });
-                db.collection("miniTaskProofs").where("userId", "==", user.id).onSnapshot(proofSnap => {
-                    proofSnap.forEach(pdoc => { if(pdoc.data().status === "pending") p.push(pdoc.data().taskId); });
-                    pendingTasks = p;
-                    updateTaskButtons();
+            db.collection("taskRequests").where("userId", "==", user.id).onSnapshot(s1 => {
+                let p = []; s1.forEach(d => { if(d.data().status === "pending") p.push(d.data().taskId); });
+                db.collection("miniTaskProofs").where("userId", "==", user.id).onSnapshot(s2 => {
+                    s2.forEach(d => { if(d.data().status === "pending") p.push(d.data().taskId); });
+                    pendingTasks = p; updateTaskButtons();
                 });
             });
         }
 
-        // ලිස්ට් එක රී-රෙන්ඩර් නොකර බොත්තම්වල ස්ටේටස් එක පමණක් වෙනස් කරන ක්‍රමය
         function updateTaskButtons() {
-            const allBtns = document.querySelectorAll('.go-btn[id^="btn-"]');
-            allBtns.forEach(btn => {
+            document.querySelectorAll('.go-btn[id^="btn-"]').forEach(btn => {
                 const id = btn.id.replace('btn-', '');
-                if (completedTasks.includes(id)) {
-                    btn.innerText = "Done ✅";
-                    btn.disabled = true;
-                } else if (pendingTasks.includes(id)) {
-                    btn.innerText = "Pending ⏳";
-                    btn.disabled = true;
-                    const miniUi = document.getElementById('mini-ui-' + id);
-                    if (miniUi) miniUi.style.display = 'none';
+                if (completedTasks.includes(id)) { btn.innerText = "Done ✅"; btn.disabled = true; }
+                else if (pendingTasks.includes(id)) { btn.innerText = "Pending ⏳"; btn.disabled = true; 
+                    if(document.getElementById('mini-ui-'+id)) document.getElementById('mini-ui-'+id).style.display='none';
                 }
             });
         }
 
-        function handleTaskBtnClick(id, category, link, reward, timer) {
-            if (category === 'minitasks') {
+        function handleBtnClick(id, cat, link, reward, timer) {
+            if (cat === 'minitasks') {
                 const ui = document.getElementById('mini-ui-' + id);
                 const btn = document.getElementById('btn-' + id);
-                if (ui.style.display === 'block') {
-                    ui.style.display = 'none';
-                    btn.innerText = "Open";
-                } else {
-                    ui.style.display = 'block';
-                    btn.innerText = "Close";
-                }
+                ui.style.display = (ui.style.display === 'block') ? 'none' : 'block';
+                btn.innerText = (ui.style.display === 'block') ? 'Close' : 'Open';
             } else {
-                handleTaskAction(link, reward, id, timer, category);
+                handleTaskAction(link, reward, id, timer, cat);
             }
         }
 
-        function handleTaskAction(link, reward, id, timer, category) {
-            if (isProcessing) return;
-            activeTaskId = id; activeReward = reward;
-            tg.openLink(link);
-            if (category === "videos") showTimerOverlay(timer);
-            else startExternalTimer(id, reward, timer);
+        function handleTaskAction(link, reward, id, timer, cat) {
+            activeTaskId = id; activeReward = reward; tg.openLink(link);
+            if (cat === "videos") showTimer(timer); else startExtTimer(id, reward, timer);
         }
 
-        function showTimerOverlay(timer) {
-            const overlay = document.getElementById('video-overlay');
-            const display = document.getElementById('timer-display');
-            const claimBtn = document.getElementById('claim-btn');
-            overlay.style.display = 'flex'; claimBtn.style.display = 'none';
-            let timeLeft = timer; display.innerText = timeLeft + "s";
-            let videoInterval = setInterval(() => {
-                timeLeft--; display.innerText = timeLeft + "s";
-                if (timeLeft <= 0) { clearInterval(videoInterval); display.innerText = "Complete!"; claimBtn.style.display = 'block'; }
-            }, 1000);
+        function showTimer(t) {
+            const ov = document.getElementById('video-overlay'); const disp = document.getElementById('timer-display');
+            const clm = document.getElementById('claim-btn'); ov.style.display = 'flex'; clm.style.display = 'none';
+            let left = t; disp.innerText = left + "s";
+            let iv = setInterval(() => { left--; disp.innerText = left + "s"; if(left<=0){ clearInterval(iv); disp.innerText="Done!"; clm.style.display='block'; } }, 1000);
         }
 
-        function collectVideoReward() {
-            document.getElementById('video-overlay').style.display = 'none';
-            claimReward(activeReward, activeTaskId);
+        function collectVideoReward() { document.getElementById('video-overlay').style.display='none'; claimReward(activeReward, activeTaskId); }
+
+        function startExtTimer(id, r, t) {
+            const btn = document.getElementById('btn-' + id); let left = t; btn.disabled = true;
+            let iv = setInterval(() => { left--; btn.innerText = left + "s"; if(left<=0){ clearInterval(iv); btn.innerText="Claim"; btn.disabled=false; btn.style.background="#4cd137"; btn.onclick=()=>claimReward(r,id); } }, 1000);
         }
 
-        function startExternalTimer(id, reward, timer) {
-            const btn = document.getElementById('btn-' + id);
-            let timeLeft = timer; btn.disabled = true;
-            const extTimer = setInterval(() => {
-                timeLeft--; btn.innerText = timeLeft + "s";
-                if (timeLeft <= 0) { 
-                    clearInterval(extTimer); btn.innerText = "Claim"; btn.disabled = false; btn.style.background = "#4cd137";
-                    btn.onclick = () => claimReward(reward, id);
-                }
-            }, 1000);
+        function claimReward(r, id) {
+            if (isProcessing) return; isProcessing = true;
+            db.collection("taskRequests").add({ userId: user.id, userName: user.first_name, taskId: id, reward: r, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() })
+            .then(() => { tg.showAlert("Reward Requested! ✅"); isProcessing = false; });
         }
 
-        function claimReward(reward, taskId) {
-            if (isProcessing) return;
+        function submitMiniProof(id) {
+            if (isProcessing) return; const val = document.getElementById('link-' + id).value;
+            if (!val.startsWith('http')) return tg.showAlert("Enter valid link!");
             isProcessing = true;
-            db.collection("taskRequests").add({
-                userId: user.id, userName: user.first_name, taskId: taskId, reward: reward, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(() => {
-                tg.showAlert("Reward Request Sent! ✅");
-                isProcessing = false;
-            });
-        }
-
-        function submitMiniProof(taskId) {
-            if (isProcessing) return;
-            const linkInput = document.getElementById('link-' + taskId);
-            const proofUrl = linkInput.value.trim();
-            if (!proofUrl || !proofUrl.startsWith('http')) return tg.showAlert("Please enter a valid link!");
-            
-            isProcessing = true;
-            db.collection("miniTaskProofs").add({
-                userId: user.id, userName: user.first_name, taskId: taskId, proofUrl: proofUrl, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(() => {
-                tg.showAlert("Proof Submitted! ✅");
-                document.getElementById('mini-ui-' + taskId).style.display = 'none';
-                isProcessing = false;
-            }).catch(e => {
-                tg.showAlert("Error: " + e.message);
-                isProcessing = false;
-            });
+            db.collection("miniTaskProofs").add({ userId: user.id, userName: user.first_name, taskId: id, proofUrl: val, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() })
+            .then(() => { tg.showAlert("Proof Submitted! ✅"); document.getElementById('mini-ui-'+id).style.display='none'; isProcessing = false; });
         }
 
         function submitWithdraw() {
-            if (isProcessing) return;
-            const amt = parseInt(document.getElementById('amount').value);
-            const detail = document.getElementById('details').value;
-            if (amt < 1000 || balance < amt || !detail) return tg.showAlert("Check amount or details!");
-            isProcessing = true;
-            db.collection("withdrawals").add({ 
-                userId: user.id, userName: user.first_name, amount: amt, method: document.getElementById('method').value, details: detail, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() 
-            }).then(() => {
-                tg.showAlert("Withdrawal Request Submitted! ✅");
-                isProcessing = false;
-            });
+            const amt = parseInt(document.getElementById('amount').value); const det = document.getElementById('details').value;
+            if (amt < 1000 || balance < amt || !det) return tg.showAlert("Invalid details!");
+            db.collection("withdrawals").add({ userId: user.id, userName: user.first_name, amount: amt, method: document.getElementById('method').value, details: det, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() })
+            .then(() => tg.showAlert("Withdrawal Requested! ✅"));
         }
 
         function updateUI() { document.querySelectorAll('.balance-text').forEach(el => el.innerText = balance); }
-        function switchScreen(s) {
-            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
-            document.getElementById('screen-' + s).classList.add('active');
-            document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
-            document.getElementById('nav-' + s).classList.add('active');
-        }
-        function showTaskGroup(g, btn) {
-            document.querySelectorAll('.task-group').forEach(el => el.classList.remove('active'));
-            document.getElementById('group-' + g).classList.add('active');
-            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        }
+        function switchScreen(s) { document.querySelectorAll('.screen').forEach(el => el.classList.remove('active')); document.getElementById('screen-'+s).classList.add('active'); document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active')); document.getElementById('nav-'+s).classList.add('active'); }
+        function showTaskGroup(g, btn) { document.querySelectorAll('.task-group').forEach(el => el.classList.remove('active')); document.getElementById('group-'+g).classList.add('active'); document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
     </script>
 </body>
 </html>
