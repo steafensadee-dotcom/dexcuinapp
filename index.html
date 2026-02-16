@@ -32,7 +32,7 @@
         .proof-ui { width: 100%; margin-top: 15px; padding-top: 15px; border-top: 1px solid #222; }
         .instruction-box { background: #1a1a1a; padding: 12px; border-radius: 10px; border-left: 4px solid #ffcc00; margin-bottom: 15px; font-size: 13px; color: #ddd; line-height: 1.4; }
         .instruction-box b { color: #ffcc00; display: block; margin-bottom: 5px; }
-        .proof-input { width: 100%; padding: 12px; background: #080808; border: 1px solid #444; color: #fff; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; font-size: 13px; }
+        .proof-input { width: 100%; padding: 12px; background: #080808; border: 1px solid #444; color: #fff; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; font-size: 13px; -webkit-user-select: text; }
         .submit-btn { background: #ffcc00; color: #000; border: none; padding: 10px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; }
 
         #video-overlay { 
@@ -116,13 +116,14 @@
 
         let tg = window.Telegram.WebApp;
         tg.ready();
+        tg.expand();
         let user = tg.initDataUnsafe.user || { id: "Guest_User", first_name: "Guest" };
         
         let balance = 0, completedTasks = [], pendingTasks = [];
         let isProcessing = false, currentlyOpenMiniId = null;
         let activeTaskId = null, activeReward = 0;
+        let proofInputState = {}; // ලින්ක් එක මතක තබා ගන්නා variable එක
 
-        // මුල් ක්‍රියාකාරීත්වය: User දත්ත ලබා ගැනීම
         function loadUserData() {
             db.collection("users").doc(user.id.toString()).onSnapshot(doc => {
                 if (doc.exists) {
@@ -137,22 +138,21 @@
         }
         loadUserData();
 
-        // නව විසඳුම: Pending දත්ත සහ ටාස්ක් ලිස්ට් එක Real-time සම්බන්ධ කිරීම
         function setupTaskListener() {
-            // TaskRequests සහ MiniTaskProofs යන දෙකම එකවර බලයි
             db.collection("taskRequests").where("userId", "==", user.id).onSnapshot(reqSnap => {
                 let p = [];
                 reqSnap.forEach(rdoc => { if(rdoc.data().status === "pending") p.push(rdoc.data().taskId); });
-                
                 db.collection("miniTaskProofs").where("userId", "==", user.id).onSnapshot(proofSnap => {
                     proofSnap.forEach(pdoc => { if(pdoc.data().status === "pending") p.push(pdoc.data().taskId); });
                     pendingTasks = p;
-                    renderTasks();
+                    // යූසර් ටයිප් කරන්නේ නැති වෙලාවක විතරක් ලිස්ට් එක අප්ඩේට් කරන්න
+                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                        renderTasks();
+                    }
                 });
             });
         }
 
-        // ටාස්ක් පෙන්වන කොටස (මෙය කිහිප වරක් Refresh වුවද Mini Task එක වැහෙන්නේ නැත)
         function renderTasks() {
             db.collection("tasks").orderBy("createdAt", "desc").get().then(snap => {
                 const groups = { videos: "", ads: "", surveys: "", minitasks: "" };
@@ -181,7 +181,10 @@
                             <div class="instruction-box"><b>📝 Instructions:</b> ${t.instructions || "Complete task and submit link."}</div>
                             <button class="go-btn" style="width:100%; margin-bottom:8px; background:#005cbf;" onclick="tg.openLink('https://fex.net/')">1. Upload Screenshot</button>
                             <button class="go-btn" style="width:100%; margin-bottom:10px;" onclick="tg.openLink('${t.link}')">2. Complete Task</button>
-                            <input type="text" id="link-${id}" placeholder="Paste proof link..." class="proof-input">
+                            <input type="text" id="link-${id}" placeholder="Paste proof link..." class="proof-input" 
+                                value="${proofInputState[id] || ''}" 
+                                oninput="saveProofInput('${id}', this.value)" 
+                                onfocus="this.scrollIntoView({behavior: 'smooth'})">
                             <button class="submit-btn" onclick="submitMiniProof('${id}')">Submit Link</button>
                         </div>` : ''}
                     </div>`;
@@ -194,9 +197,31 @@
             });
         }
 
+        // ටයිප් කරන අකුරක් පාසා එය මතක තබා ගැනීමට
+        function saveProofInput(id, val) {
+            proofInputState[id] = val;
+        }
+
         function toggleMiniSection(id) {
             currentlyOpenMiniId = (currentlyOpenMiniId === id) ? null : id;
             renderTasks();
+        }
+
+        function submitMiniProof(taskId) {
+            if (isProcessing) return;
+            const proofUrl = proofInputState[taskId];
+            if (!proofUrl || !proofUrl.startsWith('http')) return tg.showAlert("Please paste a valid link starting with http!");
+            
+            isProcessing = true;
+            db.collection("miniTaskProofs").add({
+                userId: user.id, userName: user.first_name, taskId: taskId, proofUrl: proofUrl, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                tg.showAlert("Proof Submitted! ✅");
+                currentlyOpenMiniId = null;
+                delete proofInputState[taskId]; // සාර්ථක නම් විතරක් delete කරන්න
+                isProcessing = false;
+                renderTasks();
+            });
         }
 
         function handleTaskAction(link, reward, id, timer, category) {
@@ -244,21 +269,6 @@
             }).then(() => {
                 tg.showAlert("Reward Request Sent! ✅");
                 isProcessing = false;
-            });
-        }
-
-        function submitMiniProof(taskId) {
-            if (isProcessing) return;
-            const linkInput = document.getElementById('link-' + taskId);
-            if (!linkInput.value.startsWith('http')) return tg.showAlert("Invalid link!");
-            isProcessing = true;
-            db.collection("miniTaskProofs").add({
-                userId: user.id, userName: user.first_name, taskId: taskId, proofUrl: linkInput.value, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(() => {
-                tg.showAlert("Proof Submitted! ✅");
-                currentlyOpenMiniId = null;
-                isProcessing = false;
-                renderTasks();
             });
         }
 
