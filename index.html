@@ -26,10 +26,10 @@
         .details h4 { margin: 0; font-size: 15px; }
         .reward { color: #4cd137; font-weight: bold; font-size: 13px; margin-top: 4px; }
         .task-meta { font-size: 11px; color: #aaa; margin-top: 5px; line-height: 1.3; }
-        .go-btn { background: #333; color: white; border: none; padding: 10px 15px; border-radius: 10px; font-weight: bold; cursor: pointer; min-width: 80px; transition: 0.2s; }
+        .go-btn { background: #333; color: white; border: none; padding: 10px 15px; border-radius: 10px; font-weight: bold; cursor: pointer; min-width: 80px; }
         .go-btn:disabled { background: #222; color: #777; cursor: not-allowed; pointer-events: none; }
         
-        .proof-ui { width: 100%; margin-top: 15px; padding-top: 15px; border-top: 1px solid #222; display: none; }
+        .proof-ui { width: 100%; margin-top: 15px; padding-top: 15px; border-top: 1px solid #222; }
         .instruction-box { background: #1a1a1a; padding: 12px; border-radius: 10px; border-left: 4px solid #ffcc00; margin-bottom: 15px; font-size: 13px; color: #ddd; line-height: 1.4; }
         .instruction-box b { color: #ffcc00; display: block; margin-bottom: 5px; }
         .proof-input { width: 100%; padding: 12px; background: #080808; border: 1px solid #444; color: #fff; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; font-size: 13px; }
@@ -59,7 +59,7 @@
     <div id="video-overlay">
         <div class="timer-box">
             <div id="timer-display">0s</div>
-            <p class="timer-msg">Watching video in new tab...<br>Don't close this screen!</p>
+            <p class="timer-msg">Watching video...<br>Don't close!</p>
             <button id="claim-btn" onclick="collectVideoReward()">Claim Reward 🎁</button>
         </div>
     </div>
@@ -118,9 +118,11 @@
         tg.ready();
         let user = tg.initDataUnsafe.user || { id: "Guest_User", first_name: "Guest" };
         
-        let balance = 0, completedTasks = [], activeTaskId = null, activeReward = 0;
-        let isProcessing = false; // Double submission prevention
+        let balance = 0, completedTasks = [], pendingTasks = [];
+        let isProcessing = false, currentlyOpenMiniId = null;
+        let activeTaskId = null, activeReward = 0;
 
+        // මුල් ක්‍රියාකාරීත්වය: User දත්ත ලබා ගැනීම
         function loadUserData() {
             db.collection("users").doc(user.id.toString()).onSnapshot(doc => {
                 if (doc.exists) {
@@ -130,102 +132,77 @@
                     db.collection("users").doc(user.id.toString()).set({ name: user.first_name, balance: 0, completedTasks: [] });
                 }
                 updateUI();
-                loadTasksFromFirebase();
+                setupTaskListener();
             });
         }
         loadUserData();
 
-        function loadTasksFromFirebase() {
-            // 1. Task Requests (Videos/Ads/Surveys) Check
+        // නව විසඳුම: Pending දත්ත සහ ටාස්ක් ලිස්ට් එක Real-time සම්බන්ධ කිරීම
+        function setupTaskListener() {
+            // TaskRequests සහ MiniTaskProofs යන දෙකම එකවර බලයි
             db.collection("taskRequests").where("userId", "==", user.id).onSnapshot(reqSnap => {
-                let pendingTasks = [];
-                reqSnap.forEach(rdoc => { if(rdoc.data().status === "pending") pendingTasks.push(rdoc.data().taskId); });
-
-                // 2. Mini Task Proofs Check (NEW FIX: Checking Mini Tasks too)
+                let p = [];
+                reqSnap.forEach(rdoc => { if(rdoc.data().status === "pending") p.push(rdoc.data().taskId); });
+                
                 db.collection("miniTaskProofs").where("userId", "==", user.id).onSnapshot(proofSnap => {
-                    proofSnap.forEach(pdoc => { if(pdoc.data().status === "pending") pendingTasks.push(pdoc.data().taskId); });
+                    proofSnap.forEach(pdoc => { if(pdoc.data().status === "pending") p.push(pdoc.data().taskId); });
+                    pendingTasks = p;
+                    renderTasks();
+                });
+            });
+        }
 
-                    // 3. Load Tasks
-                    db.collection("tasks").orderBy("createdAt", "desc").onSnapshot(snap => {
-                        const groups = { videos: "", ads: "", surveys: "", minitasks: "" };
-                        const icons = { videos: "▶️", ads: "🔗", surveys: "📄", minitasks: "🛠️" };
-                        
-                        snap.forEach(doc => {
-                            const t = doc.data();
-                            const isDone = completedTasks.includes(doc.id);
-                            const isPending = pendingTasks.includes(doc.id);
-                            const isMini = t.category === 'minitasks';
-                            const isSurvey = t.category === 'surveys';
+        // ටාස්ක් පෙන්වන කොටස (මෙය කිහිප වරක් Refresh වුවද Mini Task එක වැහෙන්නේ නැත)
+        function renderTasks() {
+            db.collection("tasks").orderBy("createdAt", "desc").get().then(snap => {
+                const groups = { videos: "", ads: "", surveys: "", minitasks: "" };
+                const icons = { videos: "▶️", ads: "🔗", surveys: "📄", minitasks: "🛠️" };
 
-                            const html = `<div class="task-card">
-                                <div class="icon-box">${icons[t.category] || '✨'}</div>
-                                <div class="details">
-                                    <h4>${t.title}</h4>
-                                    <p class="reward">+${t.reward} DEX</p>
-                                    ${(isSurvey && t.instructions) ? `<div class="task-meta">${t.instructions}</div>` : ''} 
-                                </div>
-                                <button id="btn-${doc.id}" class="go-btn" ${(isDone || isPending) ? 'disabled style="background:#222;"' : ''} 
-                                    onclick="${isMini ? `toggleMiniSection('${doc.id}')` : `handleTaskAction('${t.link}', ${t.reward}, '${doc.id}', ${t.timer || 15}, '${t.category}')`}">
-                                    ${isDone ? 'Done ✅' : (isPending ? 'Pending ⏳' : (isMini ? 'Open' : 'Go'))}
-                                </button>
-                                ${isMini ? `
-                                <div id="mini-${doc.id}" class="proof-ui">
-                                    <div class="instruction-box">
-                                        <b>📝 Instructions:</b>
-                                        ${t.instructions || "Follow the link and submit proof."}
-                                    </div>
-                                    <button class="go-btn" style="width:100%; margin-bottom:8px; background:#005cbf;" onclick="window.open('https://fex.net/', '_blank')">1. Upload Screenshot</button>
-                                    <button class="go-btn" style="width:100%; margin-bottom:10px;" onclick="window.open('${t.link}', '_blank')">2. Complete Task</button>
-                                    <input type="text" id="link-${doc.id}" placeholder="Paste proof link..." class="proof-input">
-                                    <button class="submit-btn" onclick="submitMiniProof('${doc.id}')">Submit Link</button>
-                                </div>` : ''}
-                            </div>`;
-                            if (groups[t.category] !== undefined) groups[t.category] += html;
-                        });
-                        
-                        document.getElementById('group-videos').innerHTML = groups.videos || "No tasks.";
-                        document.getElementById('group-ads').innerHTML = groups.ads || "No tasks.";
-                        document.getElementById('group-surveys').innerHTML = groups.surveys || "No tasks.";
-                        document.getElementById('group-minitasks').innerHTML = groups.minitasks || "No tasks.";
-                    });
+                snap.forEach(doc => {
+                    const t = doc.data();
+                    const id = doc.id;
+                    const isDone = completedTasks.includes(id);
+                    const isPending = pendingTasks.includes(id);
+                    const isOpen = currentlyOpenMiniId === id;
+
+                    const html = `<div class="task-card">
+                        <div class="icon-box">${icons[t.category] || '✨'}</div>
+                        <div class="details">
+                            <h4>${t.title}</h4>
+                            <p class="reward">+${t.reward} DEX</p>
+                            ${(t.category === 'surveys' && t.instructions) ? `<div class="task-meta">${t.instructions}</div>` : ''}
+                        </div>
+                        <button id="btn-${id}" class="go-btn" ${(isDone || isPending) ? 'disabled style="background:#222;"' : ''} 
+                            onclick="${t.category === 'minitasks' ? `toggleMiniSection('${id}')` : `handleTaskAction('${t.link}', ${t.reward}, '${id}', ${t.timer || 15}, '${t.category}')`}">
+                            ${isDone ? 'Done ✅' : (isPending ? 'Pending ⏳' : (t.category === 'minitasks' ? (isOpen ? 'Close' : 'Open') : 'Go'))}
+                        </button>
+                        ${(t.category === 'minitasks') ? `
+                        <div id="mini-${id}" class="proof-ui" style="display: ${isOpen ? 'block' : 'none'};">
+                            <div class="instruction-box"><b>📝 Instructions:</b> ${t.instructions || "Complete task and submit link."}</div>
+                            <button class="go-btn" style="width:100%; margin-bottom:8px; background:#005cbf;" onclick="tg.openLink('https://fex.net/')">1. Upload Screenshot</button>
+                            <button class="go-btn" style="width:100%; margin-bottom:10px;" onclick="tg.openLink('${t.link}')">2. Complete Task</button>
+                            <input type="text" id="link-${id}" placeholder="Paste proof link..." class="proof-input">
+                            <button class="submit-btn" onclick="submitMiniProof('${id}')">Submit Link</button>
+                        </div>` : ''}
+                    </div>`;
+                    if (groups[t.category] !== undefined) groups[t.category] += html;
+                });
+
+                Object.keys(groups).forEach(g => {
+                    document.getElementById('group-' + g).innerHTML = groups[g] || "No tasks available.";
                 });
             });
         }
 
         function toggleMiniSection(id) {
-            const el = document.getElementById('mini-' + id);
-            el.style.display = el.style.display === 'block' ? 'none' : 'block';
-        }
-
-        function submitMiniProof(taskId) {
-            if (isProcessing) return; // Prevent double click
-            const btn = event.target;
-            const linkInput = document.getElementById('link-' + taskId);
-            const proofUrl = linkInput.value;
-            if (!proofUrl || !proofUrl.startsWith('http')) return tg.showAlert("Invalid link!");
-
-            isProcessing = true;
-            btn.disabled = true; btn.innerText = "Submitting...⏳";
-
-            db.collection("miniTaskProofs").add({
-                userId: user.id, userName: user.first_name, taskId: taskId, proofUrl: proofUrl, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(() => {
-                tg.showAlert("Proof Submitted! ✅");
-                btn.innerText = "Submitted ✅";
-                linkInput.value = "";
-                toggleMiniSection(taskId);
-                isProcessing = false;
-            }).catch(() => {
-                btn.disabled = false; btn.innerText = "Submit Link";
-                tg.showAlert("Error. Try again!");
-                isProcessing = false;
-            });
+            currentlyOpenMiniId = (currentlyOpenMiniId === id) ? null : id;
+            renderTasks();
         }
 
         function handleTaskAction(link, reward, id, timer, category) {
             if (completedTasks.includes(id) || isProcessing) return;
             activeTaskId = id; activeReward = reward;
-            window.open(link, '_blank');
+            tg.openLink(link);
             if (category === "videos") showTimerOverlay(timer);
             else startExternalTimer(id, reward, timer);
         }
@@ -262,17 +239,26 @@
         function claimReward(reward, taskId) {
             if (isProcessing) return;
             isProcessing = true;
-            
-            // Disable button immediately visually
-            const btn = document.getElementById('btn-' + taskId);
-            if(btn) { btn.innerText = "Pending ⏳"; btn.disabled = true; btn.style.background = "#444"; }
-
             db.collection("taskRequests").add({
                 userId: user.id, userName: user.first_name, taskId: taskId, reward: reward, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 tg.showAlert("Reward Request Sent! ✅");
-                tg.HapticFeedback.notificationOccurred('success');
                 isProcessing = false;
+            });
+        }
+
+        function submitMiniProof(taskId) {
+            if (isProcessing) return;
+            const linkInput = document.getElementById('link-' + taskId);
+            if (!linkInput.value.startsWith('http')) return tg.showAlert("Invalid link!");
+            isProcessing = true;
+            db.collection("miniTaskProofs").add({
+                userId: user.id, userName: user.first_name, taskId: taskId, proofUrl: linkInput.value, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                tg.showAlert("Proof Submitted! ✅");
+                currentlyOpenMiniId = null;
+                isProcessing = false;
+                renderTasks();
             });
         }
 
@@ -280,38 +266,29 @@
             if (isProcessing) return;
             const amt = parseInt(document.getElementById('amount').value);
             const detail = document.getElementById('details').value;
-            const meth = document.getElementById('method').value;
-            if (amt < 1000 || balance < amt || !detail) return tg.showAlert("Check amount or details!");
-            
+            if (amt < 1000 || balance < amt || !detail) return tg.showAlert("Invalid input!");
             isProcessing = true;
-            document.querySelector('.withdraw-btn').innerText = "Processing...";
-
             db.collection("withdrawals").add({ 
-                userId: user.id, userName: user.first_name, amount: amt, method: meth, details: detail, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() 
+                userId: user.id, userName: user.first_name, amount: amt, method: document.getElementById('method').value, details: detail, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp() 
             }).then(() => {
-                tg.showAlert("Withdrawal Request Submitted! ✅");
-                document.getElementById('amount').value = "";
-                document.getElementById('details').value = "";
-                document.querySelector('.withdraw-btn').innerText = "Withdraw Now";
+                tg.showAlert("Withdrawal Submitted! ✅");
                 isProcessing = false;
             });
         }
 
+        function updateUI() { document.querySelectorAll('.balance-text').forEach(el => el.innerText = balance); }
         function switchScreen(s) {
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             document.getElementById('screen-' + s).classList.add('active');
             document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
             document.getElementById('nav-' + s).classList.add('active');
         }
-
         function showTaskGroup(g, btn) {
             document.querySelectorAll('.task-group').forEach(el => el.classList.remove('active'));
             document.getElementById('group-' + g).classList.add('active');
             document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
         }
-
-        function updateUI() { document.querySelectorAll('.balance-text').forEach(el => el.innerText = balance); }
     </script>
 </body>
 </html>
