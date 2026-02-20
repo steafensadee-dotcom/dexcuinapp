@@ -115,7 +115,10 @@
         let user = tg.initDataUnsafe.user || { id: "Guest_User", first_name: "Guest" };
         
         let balance = 0, completedTasks = [], pendingTasks = [], isProcessing = false;
-        let activeTaskId = null, activeReward = 0;
+        let activeTaskId = null, activeReward = 0, userDexId = "";
+
+        // Unique ID එකක් උත්පාදනය කරන ශ්‍රිතය
+        const generateDexId = () => "DEX-" + Math.floor(100000 + Math.random() * 900000);
 
         function initialTaskLoad() {
             db.collection("tasks").orderBy("createdAt", "desc").get().then(snap => {
@@ -144,14 +147,26 @@
         initialTaskLoad();
 
         function loadUserData() {
-            db.collection("users").doc(user.id.toString()).onSnapshot(doc => {
+            const userRef = db.collection("users").doc(user.id.toString());
+            userRef.onSnapshot(doc => {
                 if (doc.exists) {
-                    balance = doc.data().balance || 0;
-                    completedTasks = doc.data().completedTasks || [];
+                    const data = doc.data();
+                    balance = data.balance || 0;
+                    completedTasks = data.completedTasks || [];
+                    
+                    // පවතින යූසර්ට ID එකක් නැත්නම් අලුතින් සාදා අප්ඩේට් කරයි
+                    if (!data.dexId) {
+                        userDexId = generateDexId();
+                        userRef.update({ dexId: userDexId });
+                    } else {
+                        userDexId = data.dexId;
+                    }
+                    
                     updateUI();
                     updateButtonStatuses();
                 } else {
-                    db.collection("users").doc(user.id.toString()).set({ name: user.first_name, balance: 0, completedTasks: [] });
+                    userDexId = generateDexId();
+                    userRef.set({ name: user.first_name, balance: 0, completedTasks: [], dexId: userDexId });
                 }
             });
 
@@ -242,18 +257,13 @@
         }
 
         function claimReward(r, id) {
-            if (isProcessing) return; 
-            isProcessing = true;
-            // එකම ටාස්ක් එකට කිහිප වරක් රික්වෙස්ට් යැවීම වැලැක්වීමට Unique ID එකක් භාවිතා කරයි
+            if (isProcessing) return; isProcessing = true;
             const requestId = user.id + "_" + id;
             db.collection("taskRequests").doc(requestId).set({
-                userId: user.id, userName: user.first_name, taskId: id, reward: r, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                userId: user.id, userName: user.first_name, dexId: userDexId, taskId: id, reward: r, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
-                tg.showAlert("Reward Requested! ✅"); 
-                isProcessing = false;
-            }).catch(e => {
-                isProcessing = false;
-            });
+                tg.showAlert("Reward Requested! ✅"); isProcessing = false;
+            }).catch(e => { isProcessing = false; });
         }
 
         function submitMiniProof(id) {
@@ -263,14 +273,12 @@
             isProcessing = true;
             const proofId = user.id + "_" + id;
             db.collection("miniTaskProofs").doc(proofId).set({
-                userId: user.id, userName: user.first_name, taskId: id, proofUrl: val, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                userId: user.id, userName: user.first_name, dexId: userDexId, taskId: id, proofUrl: val, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 tg.showAlert("Proof Submitted! ✅");
                 document.getElementById('mini-ui-' + id).style.display = 'none';
                 isProcessing = false;
-            }).catch(e => {
-                isProcessing = false;
-            });
+            }).catch(e => { isProcessing = false; });
         }
 
         function submitWithdraw() {
@@ -280,7 +288,7 @@
             if (amt < 1000 || balance < amt || !det) return tg.showAlert("Invalid input!");
             isProcessing = true;
             db.collection("withdrawals").add({
-                userId: user.id, userName: user.first_name, amount: amt, method: document.getElementById('method').value, details: det, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                userId: user.id, userName: user.first_name, dexId: userDexId, amount: amt, method: document.getElementById('method').value, details: det, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 tg.showAlert("Withdrawal Submitted! ✅"); isProcessing = false;
             }).catch(e => { isProcessing = false; });
