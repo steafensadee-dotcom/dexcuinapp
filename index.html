@@ -117,7 +117,6 @@
         let balance = 0, completedTasks = [], pendingTasks = [], isProcessing = false;
         let activeTaskId = null, activeReward = 0;
 
-        // මුල් දත්ත ලෝඩ් කිරීම - මෙය එක් වරක් පමණක් සිදුවේ
         function initialTaskLoad() {
             db.collection("tasks").orderBy("createdAt", "desc").get().then(snap => {
                 const groups = { videos: "", ads: "", surveys: "", minitasks: "" };
@@ -139,13 +138,12 @@
                     if (groups[t.category] !== undefined) groups[t.category] += html;
                 });
                 Object.keys(groups).forEach(g => document.getElementById('group-' + g).innerHTML = groups[g] || "No tasks available.");
-                loadUserData(); // දත්ත Snapshot ලිස්නර් එක සම්බන්ධ කිරීම
+                loadUserData();
             });
         }
         initialTaskLoad();
 
         function loadUserData() {
-            // User Snapshot
             db.collection("users").doc(user.id.toString()).onSnapshot(doc => {
                 if (doc.exists) {
                     balance = doc.data().balance || 0;
@@ -157,14 +155,12 @@
                 }
             });
 
-            // Requests Snapshot (Pending දේවල් බලාගන්න)
             db.collection("taskRequests").where("userId", "==", user.id).onSnapshot(s => {
                 let p = []; s.forEach(d => { if(d.data().status === "pending") p.push(d.data().taskId); });
                 pendingTasks = p;
                 updateButtonStatuses();
             });
 
-            // Mini Task Snapshot
             db.collection("miniTaskProofs").where("userId", "==", user.id).onSnapshot(s => {
                 let p = [...pendingTasks]; s.forEach(d => { if(d.data().status === "pending") p.push(d.data().taskId); });
                 pendingTasks = p;
@@ -172,7 +168,6 @@
             });
         }
 
-        // මෙය තමයි කීබෝඩ් එක වැසෙන්නේ නැතිව බොත්තම් පමණක් මාරු කරන කොටස
         function updateButtonStatuses() {
             document.querySelectorAll('.go-btn[id^="btn-"]').forEach(btn => {
                 const id = btn.id.replace('btn-', '');
@@ -188,7 +183,6 @@
 
         function hideMiniUI(id) {
             const ui = document.getElementById('mini-ui-' + id);
-            // දැනට focus එකේ නැතිනම් විතරක් hide කරන්න (Keyboard එක ආරක්ෂා කරගන්න)
             if (ui && document.activeElement.id !== 'link-' + id) {
                 ui.style.display = 'none';
             }
@@ -248,11 +242,17 @@
         }
 
         function claimReward(r, id) {
-            if (isProcessing) return; isProcessing = true;
-            db.collection("taskRequests").add({
+            if (isProcessing) return; 
+            isProcessing = true;
+            // එකම ටාස්ක් එකට කිහිප වරක් රික්වෙස්ට් යැවීම වැලැක්වීමට Unique ID එකක් භාවිතා කරයි
+            const requestId = user.id + "_" + id;
+            db.collection("taskRequests").doc(requestId).set({
                 userId: user.id, userName: user.first_name, taskId: id, reward: r, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
-                tg.showAlert("Reward Requested! ✅"); isProcessing = false;
+                tg.showAlert("Reward Requested! ✅"); 
+                isProcessing = false;
+            }).catch(e => {
+                isProcessing = false;
             });
         }
 
@@ -261,11 +261,14 @@
             const val = document.getElementById('link-' + id).value;
             if (!val.startsWith('http')) return tg.showAlert("Please paste a valid link!");
             isProcessing = true;
-            db.collection("miniTaskProofs").add({
+            const proofId = user.id + "_" + id;
+            db.collection("miniTaskProofs").doc(proofId).set({
                 userId: user.id, userName: user.first_name, taskId: id, proofUrl: val, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 tg.showAlert("Proof Submitted! ✅");
                 document.getElementById('mini-ui-' + id).style.display = 'none';
+                isProcessing = false;
+            }).catch(e => {
                 isProcessing = false;
             });
         }
@@ -280,7 +283,7 @@
                 userId: user.id, userName: user.first_name, amount: amt, method: document.getElementById('method').value, details: det, status: "pending", timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 tg.showAlert("Withdrawal Submitted! ✅"); isProcessing = false;
-            });
+            }).catch(e => { isProcessing = false; });
         }
 
         function updateUI() { document.querySelectorAll('.balance-text').forEach(el => el.innerText = balance); }
